@@ -1,4 +1,11 @@
 #include "render/renderer.hpp"
+#include "core/log.hpp"
+#include "daxa/c/core.h"
+#include "daxa/sync.hpp"
+#include "daxa/types.hpp"
+#include "daxa/utils/pipeline_manager.hpp"
+#include "platform/window.hpp"
+#include "shared.inl"
 
 namespace t3d
 {
@@ -21,19 +28,31 @@ namespace t3d
               .name = "pipeline manager",
           })}
     {
+        // create the render_target
+        create_render_target();
+
+        compute_pipeline_ = pipeline_manager_.add_compute_pipeline2({
+            .source = daxa::ShaderFile{"raymarch.glsl"},
+            .entry_point = "main"
+        }).value();
     }
 
-    Renderer::~Renderer() = default; // Daxa waits for the GPU and collects garbage on device destruction.
+    Renderer::~Renderer() {
+        device_.destroy_image(render_target_);
+    }
 
-    void Renderer::render(RenderView const &)
+    void Renderer::render(RenderView const & view)
     {
+        if (window_.minimized()) { return; }
+
         if (window_.resized)
         {
             swapchain_.resize();
+            device_.destroy_image(render_target_);
+            create_render_target();
             window_.resized = false;
         }
-        if (window_.minimized()) { return; }
-
+        
         daxa::ImageId swapchain_image = swapchain_.acquire_next_image();
         if (swapchain_image.is_empty()) { return; }
 
@@ -41,26 +60,50 @@ namespace t3d
         daxa::ImageInfo image_info = device_.image_info(swapchain_image).value();
 
         recorder.pipeline_image_barrier({
-            .dst_access = daxa::AccessConsts::COLOR_ATTACHMENT_OUTPUT_READ_WRITE,
-            .image = swapchain_image,
-            .layout_operation = daxa::ImageLayoutOperation::TO_GENERAL,
+            .src_access = daxa::AccessConsts::COMPUTE_SHADER_WRITE, 
+            .image = render_target_,
+            .layout_operation = daxa::ImageLayoutOperation::TO_GENERAL
         });
 
-        // Placeholder pass: clear to sky blue. All real passes (see renderer.hpp) go in here.
-        daxa::RenderCommandRecorder render_recorder = std::move(recorder).begin_renderpass({
-            .color_attachments = std::array{
-                daxa::RenderAttachmentInfo{
-                    .image_view = swapchain_image.default_view(),
-                    .load_op = daxa::AttachmentLoadOp::CLEAR,
-                    .clear_value = std::array<daxa::f32, 4>{0.45f, 0.65f, 0.95f, 1.0f},
-                },
-            },
-            .render_area = {.width = image_info.size.x, .height = image_info.size.y},
+        // dispatch compute shader
+        // no player position yet
+        recorder.set_pipeline(*compute_pipeline_);
+        recorder.push_constant(RaymarchPush{
+            .image_id = render_target_.default_view(),
+            .frame_dim = {window_.width(), window_.height()},
+            .cam_pos     = to_daxa(glm::vec3(view.camera.position)),   // dvec3 -> vec3 first
+            .cam_forward = to_daxa(view.camera.forward()),
+            .cam_right   = to_daxa(view.camera.right()),
+            .cam_up      = to_daxa(view.camera.up()),
+            .tan_half_fov = std::tan(glm::radians(view.camera.fov_degrees) * 0.5f),
         });
-        recorder = std::move(render_recorder).end_renderpass();
+        recorder.dispatch({(window_.width() + 7) / 8, (window_.height() + 7) / 8});
+
+        // render_target transfer read
+        recorder.pipeline_image_barrier({
+            .src_access = daxa::AccessConsts::COMPUTE_SHADER_WRITE,
+            .dst_access = daxa::AccessConsts::BLIT_READ,
+            .image = render_target_,
+            .layout_operation = daxa::ImageLayoutOperation::TO_GENERAL
+        });
 
         recorder.pipeline_image_barrier({
-            .src_access = daxa::AccessConsts::COLOR_ATTACHMENT_OUTPUT_READ_WRITE,
+            .dst_access = daxa::AccessConsts::BLIT_WRITE,
+            .image = swapchain_image,
+            .layout_operation = daxa::ImageLayoutOperation::TO_GENERAL
+        });
+
+        // TODO: scaling
+        recorder.blit_image_to_image({
+            .src_image = render_target_,
+            .dst_image = swapchain_image,
+            .src_offsets = {{ {0, 0, 0}, {static_cast<i32>(device_.image_info(render_target_).value().size.x), static_cast<i32>(device_.image_info(render_target_).value().size.y), 1} }},
+            .dst_offsets = {{ {0, 0, 0}, {static_cast<i32>(image_info.size.x), static_cast<i32>(image_info.size.y), 1} }},
+            .filter = daxa::Filter::LINEAR
+        });
+
+        recorder.pipeline_image_barrier({
+            .src_access = daxa::AccessConsts::BLIT_WRITE,
             .image = swapchain_image,
             .layout_operation = daxa::ImageLayoutOperation::TO_PRESENT_SRC,
         });
@@ -77,5 +120,15 @@ namespace t3d
             .swapchain = swapchain_,
         });
         device_.collect_garbage();
+    }
+
+    void Renderer::create_render_target() {
+        // TODO: window size * scale
+        render_target_ = device_.create_image({
+            .format = daxa::Format::R16G16B16A16_SFLOAT,
+            .size = {window_.width(), window_.height(), 1},
+            .usage = daxa::ImageUsageFlagBits::SHADER_STORAGE | daxa::ImageUsageFlagBits::TRANSFER_SRC,
+            .name = "render_target_image"
+        });
     }
 } // namespace t3d

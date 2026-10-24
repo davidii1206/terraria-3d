@@ -15,3 +15,13 @@
 //   shadow.glsl    sun shadow cascades
 //   post.glsl      fog, underwater, tonemap
 #include <daxa/daxa.inl>
+
+struct RaymarchPush {
+    daxa_ImageViewId image_id;
+    daxa_u32vec2 frame_dim;
+    daxa_f32vec3 cam_pos;
+    daxa_f32vec3 cam_forward;
+    daxa_f32vec3 cam_right;
+    daxa_f32vec3 cam_up;
+    daxa_f32     tan_half_fov;
+};

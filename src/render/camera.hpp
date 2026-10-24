@@ -11,6 +11,8 @@
 //  - smooth look, view bobbing, FOV change while sprinting, underwater flag (eye inside liquid)
 
 #include "core/types.hpp"
+#include "glm/geometric.hpp"
+#include <cmath>
 
 namespace t3d
 {
@@ -22,5 +24,14 @@ namespace t3d
         f32 near_plane = 0.1f, far_plane = 2000.0f;
 
         // TODO: view_matrix(), projection_matrix(aspect), frustum(), forward()/right()/up().
+        glm::vec3 forward() const {
+            return {cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw)};
+        }
+        glm::vec3 right() const {
+            return glm::normalize(glm::cross(forward(), {0, 1, 0}));
+        }
+        glm::vec3 up() const {
+            return glm::cross(right(), forward());
+        }
     };
 } // namespace t3d

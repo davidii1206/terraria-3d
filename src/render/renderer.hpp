@@ -23,11 +23,20 @@
 // on file save). Structs shared between C++ and GLSL go in shaders/shared.inl.
 // ----------------------------------------------------------------------------------------
 
+#include "daxa/gpu_resources.hpp"
+#include "daxa/pipeline.hpp"
 #include "platform/window.hpp"
 #include "render/camera.hpp"
+#include <memory>
 
+#define SHADER_LANGUAGE DAXA_LANGUAGE_GLSL
 #include <daxa/daxa.hpp>
 #include <daxa/utils/pipeline_manager.hpp>
+
+namespace
+{
+    auto to_daxa(glm::vec3 const & v) -> daxa_f32vec3 { return {v.x, v.y, v.z}; }
+}
 
 namespace t3d
 {
@@ -59,7 +68,12 @@ namespace t3d
         daxa::Device device_;
         daxa::Swapchain swapchain_;
         daxa::PipelineManager pipeline_manager_;
+        std::shared_ptr<daxa::ComputePipeline> compute_pipeline_;
+        daxa::ImageId render_target_;
         // TODO: depth image (recreated on resize), pipelines (terrain, entity, sky, water, ui),
         //       global uniform buffer, texture atlas image + sampler, ImGui renderer.
+
+        // functions
+        void create_render_target();
     };
 } // namespace t3d
