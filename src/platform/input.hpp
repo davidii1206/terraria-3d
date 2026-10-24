@@ -5,7 +5,7 @@
 //  1. Raw state (key down/pressed/released, mouse buttons, cursor delta, scroll, typed chars).
 //  2. Bindings: user-configurable map  Action <- {key|mouse button|gamepad button}.
 //  3. PlayerInput: the small struct the game actually consumes, and the one that is sent to the
-//     server every tick (see net/protocol.hpp, PlayerInputPacket). It contains *intent*, never
+//     server every tick (see net/packets.hpp, PlayerInputPacket). It contains *intent*, never
 //     positions: move axes, look yaw/pitch, jump/sprint/sneak, primary/secondary action,
 //     hotbar slot, and a monotonically increasing sequence number for client-side prediction.
 //

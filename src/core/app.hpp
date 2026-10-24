@@ -37,6 +37,8 @@ namespace t3d
         RunMode mode = RunMode::Standalone;
         ClientSettings client;
         ServerSettings server;
+        int argc = 0;                     // original command line, kept for Steam's +connect_steam
+        char const * const * argv = nullptr;
         // TODO: connect address for Client mode, --world <name>, --seed, --port, --headless-test.
     };
 

@@ -86,6 +86,63 @@ FetchContent_MakeAvailable(cgltf)
 add_library(cgltf INTERFACE)
 target_include_directories(cgltf SYSTEM INTERFACE ${cgltf_SOURCE_DIR})
 
+# ENet (zpl-c single-header fork). Exactly one translation unit (src/net/enet_implementation.cpp)
+# defines ENET_IMPLEMENTATION; everyone else just includes <enet.h>.
+FetchContent_Declare(enet
+    GIT_REPOSITORY https://github.com/zpl-c/enet.git
+    GIT_TAG        v2.6.5
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(enet)
+add_library(enet_header INTERFACE)
+target_include_directories(enet_header SYSTEM INTERFACE ${enet_SOURCE_DIR}/include)
+if(WIN32)
+    target_link_libraries(enet_header INTERFACE ws2_32 winmm)
+endif()
+
+# LZ4 (bulk packet compression: chunk data).
+set(LZ4_BUILD_CLI OFF CACHE BOOL "" FORCE)
+set(LZ4_BUILD_LEGACY_LZ4C OFF CACHE BOOL "" FORCE)
+set(LZ4_BUNDLED_MODE ON CACHE BOOL "" FORCE)
+FetchContent_Declare(lz4
+    GIT_REPOSITORY https://github.com/lz4/lz4.git
+    GIT_TAG        v1.10.0
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  build/cmake)
+FetchContent_MakeAvailable(lz4)
+
+# Steamworks SDK (optional). Drop the SDK into ./sdk (public/, redistributable_bin/). It is not redistributable,
+# so it is git-ignored. Without it the game still builds and uses the ENet transport only.
+set(STEAMWORKS_SDK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/sdk CACHE PATH "Steamworks SDK root")
+set(TERRARIA_STEAM_APP_ID 480 CACHE STRING "Steam App ID (480 = Spacewar test app)")
+if(EXISTS ${STEAMWORKS_SDK_DIR}/public/steam/steam_api.h)
+    option(TERRARIA_ENABLE_STEAM "Build with Steamworks networking" ON)
+else()
+    option(TERRARIA_ENABLE_STEAM "Build with Steamworks networking" OFF)
+endif()
+if(TERRARIA_ENABLE_STEAM)
+    if(WIN32)
+        set(STEAM_LIB_DIR ${STEAMWORKS_SDK_DIR}/redistributable_bin/win64)
+        set(STEAM_LIB_FILE ${STEAM_LIB_DIR}/steam_api64.lib)
+        set(STEAM_RUNTIME_FILE ${STEAM_LIB_DIR}/steam_api64.dll)
+    elseif(APPLE)
+        set(STEAM_LIB_DIR ${STEAMWORKS_SDK_DIR}/redistributable_bin/osx)
+        set(STEAM_LIB_FILE ${STEAM_LIB_DIR}/libsteam_api.dylib)
+        set(STEAM_RUNTIME_FILE ${STEAM_LIB_FILE})
+    else()
+        set(STEAM_LIB_DIR ${STEAMWORKS_SDK_DIR}/redistributable_bin/linux64)
+        set(STEAM_LIB_FILE ${STEAM_LIB_DIR}/libsteam_api.so)
+        set(STEAM_RUNTIME_FILE ${STEAM_LIB_FILE})
+    endif()
+    add_library(steam_api SHARED IMPORTED)
+    set_target_properties(steam_api PROPERTIES
+        IMPORTED_LOCATION ${STEAM_RUNTIME_FILE}
+        IMPORTED_IMPLIB   ${STEAM_LIB_FILE}
+        INTERFACE_INCLUDE_DIRECTORIES ${STEAMWORKS_SDK_DIR}/public)
+    message(STATUS "Steamworks enabled (App ID ${TERRARIA_STEAM_APP_ID})")
+else()
+    message(STATUS "Steamworks disabled (SDK not found in ${STEAMWORKS_SDK_DIR})")
+endif()
+
 # GLM for the camera / transform math.
 FetchContent_Declare(glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
@@ -114,4 +171,26 @@ target_link_libraries(terraria_3d PRIVATE
     imgui::imgui
     glfw
     cgltf
+    enet_header
+    lz4_static
     glm::glm)
+
+# --- Tests (opt-in: cmake --build build --target net_loopback_test) ------------------------------
+set(NET_SOURCES ${TERRARIA_SOURCES})
+list(FILTER NET_SOURCES INCLUDE REGEX "src/net/(transport|enet_backend|loopback_backend|sim_backend|session|compression|steam_backend|steam_platform|network_manager|enet_implementation)\\.cpp$")
+add_executable(net_loopback_test EXCLUDE_FROM_ALL tests/net_loopback_test.cpp ${NET_SOURCES})
+target_include_directories(net_loopback_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(net_loopback_test PRIVATE enet_header lz4_static)
+
+# --- Steam runtime files next to the executable ---------------------------------------------------
+if(TERRARIA_ENABLE_STEAM)
+    target_link_libraries(terraria_3d PRIVATE steam_api)
+    target_compile_definitions(terraria_3d PRIVATE T3D_STEAM=1 T3D_STEAM_APP_ID=${TERRARIA_STEAM_APP_ID})
+    set_target_properties(terraria_3d net_loopback_test PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+    target_link_libraries(net_loopback_test PRIVATE steam_api)
+    target_compile_definitions(net_loopback_test PRIVATE T3D_STEAM=1)
+    add_custom_command(TARGET terraria_3d POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${STEAM_RUNTIME_FILE} $<TARGET_FILE_DIR:terraria_3d>
+        # Development only: lets the exe run outside Steam. Remove for shipping builds.
+        COMMAND ${CMAKE_COMMAND} -E echo ${TERRARIA_STEAM_APP_ID} > $<TARGET_FILE_DIR:terraria_3d>/steam_appid.txt)
+endif()

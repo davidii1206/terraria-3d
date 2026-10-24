@@ -27,6 +27,8 @@
 auto main(int argc, char ** argv) -> int
 {
     t3d::AppArgs args;
+    args.argc = argc;
+    args.argv = argv;
     for (int i = 1; i < argc; ++i)
     {
         std::string_view const arg = argv[i];

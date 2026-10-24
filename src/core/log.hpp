@@ -1,13 +1,28 @@
 #pragma once
-// Minimal logging facade. Swap the body for spdlog/fmt later without touching call sites.
+// Minimal logging facade. Swap the body for spdlog later without touching call sites.
 // Planned: levels (trace/info/warn/error), per-subsystem tags ("net", "gen", "render"),
 // log to stdout + rotating file, and a ring buffer that the in-game console can display.
 
+#include <format>
 #include <iostream>
 
 namespace t3d
 {
-    // TODO: replace with a real logger. Kept as macros-free inline helpers on purpose.
-    inline void log_info(char const * msg) { std::cout << "[info] " << msg << '\n'; }
-    inline void log_error(char const * msg) { std::cerr << "[error] " << msg << '\n'; }
+    template <typename... Args>
+    void log_info(std::format_string<Args...> fmt, Args &&... args)
+    {
+        std::cout << "[info] " << std::format(fmt, std::forward<Args>(args)...) << '\n';
+    }
+
+    template <typename... Args>
+    void log_warn(std::format_string<Args...> fmt, Args &&... args)
+    {
+        std::cerr << "[warn] " << std::format(fmt, std::forward<Args>(args)...) << '\n';
+    }
+
+    template <typename... Args>
+    void log_error(std::format_string<Args...> fmt, Args &&... args)
+    {
+        std::cerr << "[error] " << std::format(fmt, std::forward<Args>(args)...) << '\n';
+    }
 } // namespace t3d

@@ -4,3 +4,8 @@ compile_commands.json
 *.spv
 imgui.ini
 assets/bistro/
+
+# Valve Steamworks SDK: license forbids redistribution, never commit it
+sdk/
+third_party/steamworks/
+steam_appid.txt
