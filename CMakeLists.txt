@@ -182,13 +182,20 @@ add_executable(net_loopback_test EXCLUDE_FROM_ALL tests/net_loopback_test.cpp ${
 target_include_directories(net_loopback_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(net_loopback_test PRIVATE enet_header lz4_static)
 
+# Manual two-machine Steam relay check: cmake --build build --target net_steam_pair
+add_executable(net_steam_pair EXCLUDE_FROM_ALL tests/net_steam_pair.cpp ${NET_SOURCES})
+target_include_directories(net_steam_pair PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(net_steam_pair PRIVATE enet_header lz4_static)
+
 # --- Steam runtime files next to the executable ---------------------------------------------------
 if(TERRARIA_ENABLE_STEAM)
     target_link_libraries(terraria_3d PRIVATE steam_api)
     target_compile_definitions(terraria_3d PRIVATE T3D_STEAM=1 T3D_STEAM_APP_ID=${TERRARIA_STEAM_APP_ID})
-    set_target_properties(terraria_3d net_loopback_test PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+    set_target_properties(terraria_3d net_loopback_test net_steam_pair PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
     target_link_libraries(net_loopback_test PRIVATE steam_api)
     target_compile_definitions(net_loopback_test PRIVATE T3D_STEAM=1)
+    target_link_libraries(net_steam_pair PRIVATE steam_api)
+    target_compile_definitions(net_steam_pair PRIVATE T3D_STEAM=1)
     add_custom_command(TARGET terraria_3d POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${STEAM_RUNTIME_FILE} $<TARGET_FILE_DIR:terraria_3d>
         # Development only: lets the exe run outside Steam. Remove for shipping builds.
